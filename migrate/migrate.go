@@ -18,7 +18,8 @@ var (
 	nonEmptyQueryRegex = regexp.MustCompile(`\w+`)
 )
 
-func Migrate(dsn string, scriptDirectory string) error {
+// Migrate runs the migrations in scriptDire
+func Migrate(dsn string, scriptsDirectory string) error {
 	var err error
 	db, err = sql.Open("mysql", dsn)
 	if err != nil {
@@ -41,12 +42,12 @@ func Migrate(dsn string, scriptDirectory string) error {
 		return fmt.Errorf("unable to get ran scripts: %s", err.Error())
 	}
 
-	files, err := getScriptFiles(scriptDirectory)
+	files, err := getScriptFiles(scriptsDirectory)
 	if err != nil {
 		return fmt.Errorf("unable to find scripts: %s", err.Error())
 	}
 
-	err = runNewMigrationScripts(ranScripts, scriptDirectory, files)
+	err = runNewMigrationScripts(ranScripts, scriptsDirectory, files)
 	if err != nil {
 		return fmt.Errorf("unable to run all scripts: %s", err.Error())
 	}
