@@ -16,10 +16,16 @@ import (
 var (
 	db                 *sql.DB
 	nonEmptyQueryRegex = regexp.MustCompile(`\w+`)
+	dbNameRegex        = regexp.MustCompile(`.+\/(.+)\?.+`)
 )
 
 // Migrate runs the migrations in scriptDire
 func Migrate(dsn string, scriptsDirectory string) error {
+	// Make sure we support multiStatements
+	if !strings.Contains(dsn, "multiStatements=true") {
+		return fmt.Errorf("you must include multiSatements=true in your dsn")
+	}
+
 	var err error
 	db, err = sql.Open("mysql", dsn)
 	if err != nil {
@@ -29,7 +35,11 @@ func Migrate(dsn string, scriptsDirectory string) error {
 
 	err = db.Ping()
 	if err != nil {
-		return fmt.Errorf("unable to ping database: %s", err.Error())
+		// Database might not exist. Try creating it.
+		err = createDatabase(dsn)
+		if err != nil {
+			return fmt.Errorf("unable to ping database: %s", err.Error())
+		}
 	}
 
 	err = createMigrationTableIfNotExists()
@@ -50,6 +60,29 @@ func Migrate(dsn string, scriptsDirectory string) error {
 	err = runNewMigrationScripts(ranScripts, scriptsDirectory, files)
 	if err != nil {
 		return fmt.Errorf("unable to run all scripts: %s", err.Error())
+	}
+
+	return nil
+}
+
+func createDatabase(dsn string) error {
+	matches := dbNameRegex.FindStringSubmatch(dsn)
+	if len(matches) < 2 {
+		return fmt.Errorf("unable to find database name in migrations")
+	}
+
+	dbName := matches[1]
+	masterDsn := strings.Replace(dsn, dbName, "", -1)
+
+	masterDB, err := sql.Open("mysql", masterDsn)
+	if err != nil {
+		return err
+	}
+	defer masterDB.Close()
+
+	_, err = masterDB.Exec("CREATE DATABASE " + dbName)
+	if err != nil {
+		return fmt.Errorf("unable to run create database statement")
 	}
 
 	return nil
@@ -102,7 +135,6 @@ func getScriptFiles(directory string) (scripts []string, err error) {
 	}
 
 	for _, file := range files {
-		fmt.Println(file.Name())
 		if !file.IsDir() {
 			scripts = append(scripts, file.Name())
 		}
@@ -146,19 +178,9 @@ func runScript(path string) error {
 		return fmt.Errorf("unable to read file %s, error: %s", path, err.Error())
 	}
 
-	scripts := strings.Split(string(data), ";")
-
-	for _, script := range scripts {
-		// Make sure script isn't empty.
-		empty := !nonEmptyQueryRegex.MatchString(script)
-		if empty {
-			continue
-		}
-
-		_, err = db.Exec(script)
-		if err != nil {
-			return fmt.Errorf("uanble to execute script %s, error: %s", path, err.Error())
-		}
+	_, err = db.Exec(string(data))
+	if err != nil {
+		return fmt.Errorf("unable to execute script: %s, error: %s", path, err.Error())
 	}
 
 	return nil
