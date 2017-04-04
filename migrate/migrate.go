@@ -23,7 +23,7 @@ var (
 func Migrate(dsn string, scriptsDirectory string) error {
 	// Make sure we support multiStatements
 	if !strings.Contains(dsn, "multiStatements=true") {
-		return fmt.Errorf("you must include multiSatements=true in your dsn")
+		return fmt.Errorf("you must include multiStatements=true in your dsn")
 	}
 
 	var err error
